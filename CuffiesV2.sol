@@ -775,6 +775,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
     address payable private masterChef;
     IPancakeRouter02 public pcsV2Router;
     address public pcsV2Pair;
+    address public pcsV2Pair2;
     bool private tradingOpen = false;
     bool private liquidityAdded = false;
     bool private inSwap = false;
@@ -793,6 +794,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
     event FeesDisabled (bool test);
     event FeesEnabled (bool test);
     event PairAddressUpdated (address indexed pair);
+    event Pair2AddressUpdated (address indexed pair);
     event RouterAddressUpdated(address indexed router);
     modifier lockTheSwap {
         inSwap = true;
@@ -945,17 +947,17 @@ contract CUFFIES is Context, IBEP20, Ownable {
         if (from != owner() && to != owner()) {
             require(amount <= _maxTxAmount, "Transfer amount exceeds the maxTxAmount.");
             require (balanceOf(to) + amount <= maxWalletAmount, "CUFFIES: Receiver's wallet balance exceeds the max wallet amount");
-            if (from == pcsV2Pair && to != address(pcsV2Router)) {
+            if (from == pcsV2Pair || from ==pcsV2Pair2 && to != address(pcsV2Router)) {
                 require(tradingOpen,"Trading is closed.");
                 if (feesdisabled){
-                    
+
                     _taxFee = 0;}
                     
                     _taxFee = 1;
                 
             }
              uint256 contractTokenBalance = balanceOf(address(this));
-            if (!inSwap && from != pcsV2Pair && swapEnabled && contractTokenBalance>0) {
+            if (!inSwap && from != pcsV2Pair || from != pcsV2Pair2 && swapEnabled && contractTokenBalance>0) {
                 
                 
                 swapTokensForEth(contractTokenBalance);
@@ -973,7 +975,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
             takeFee = false;
         }
          
-         if ( model[to] && from != pcsV2Pair) {
+         if ( model[to] && from != pcsV2Pair || from != pcsV2Pair2) {
             takeFee = false;
         }
 
@@ -1128,6 +1130,12 @@ contract CUFFIES is Context, IBEP20, Ownable {
         pcsV2Pair = newRouter;
         emit PairAddressUpdated (newRouter);
     }
+    
+    function setPair2Address(address newRouter) public onlyOwner() {
+        pcsV2Pair2 = newRouter;
+        emit Pair2AddressUpdated (newRouter);
+    }
+    
     function setRouterAddress(address newRouter) public onlyOwner() {
         IPancakeRouter02 _pancakeswapV2Router =  IPancakeRouter02(newRouter);
         pcsV2Router = _pancakeswapV2Router;
