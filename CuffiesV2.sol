@@ -978,7 +978,8 @@ contract CUFFIES is Context, IBEP20, Ownable {
         }
 
         _tokenTransfer(from, to, amount, takeFee);
-        restoreAllFee();
+        if(!feesdisabled){
+        restoreAllFee();}
     }
 
     function swapTokensForEth(uint256 tokenAmount) private lockTheSwap {
