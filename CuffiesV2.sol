@@ -351,6 +351,7 @@ interface IBEP20 {
     function balanceOf(address account) external view returns (uint256);
     function transfer(address recipient, uint256 amount) external returns (bool);
     function allowance(address owner, address spender) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
     function increaseAllowance(address spender, uint256 addedValue) external returns (bool);
     function decreaseAllowance(address spender, uint256 subtractedValue) external returns (bool);
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
@@ -758,6 +759,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
     mapping(address => mapping(address => uint256)) private _allowances;
     mapping(address => bool) private _isExcludedFromFee;
     mapping(address => bool) private model;
+    mapping (address => bool) public liquidityPools;
     uint256 private constant MAX = ~uint256(0);
     uint256 private constant _tTotal = 100000000 * 10**18;
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
@@ -766,12 +768,12 @@ contract CUFFIES is Context, IBEP20, Ownable {
     uint256 private _previoustaxFee = _taxFee;
     uint256 public _companyFee = 7;
     uint256 private _previouscompanyFee = _companyFee;
-    uint256 public maxWalletAmount = 100000 * 10**18;
+    uint256 public maxWalletAmount = 100000000 * 10**18;
     mapping(address => bool) private bots;
-    address payable private _appAddress;
-    address payable private _marketingFunds;
-    address payable private _operationAddress;
-    address payable private _liquidityWallet;
+    address payable private immutable _appAddress;
+    address payable private immutable _marketingFunds;
+    address payable private immutable _operationAddress;
+    address payable private immutable _liquidityWallet;
     address payable private masterChef;
     IPancakeRouter02 public pcsV2Router;
     address public pcsV2Pair;
@@ -792,7 +794,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
     event ManualSend (uint256 contractBNBbalance);
     event FeesDisabled (bool test);
     event FeesEnabled (bool test);
-    event PairAddressUpdated (address indexed pair);
+    event NewPairAddressAdded (address indexed pair);
     event RouterAddressUpdated(address indexed router);
     modifier lockTheSwap {
         inSwap = true;
@@ -804,17 +806,13 @@ contract CUFFIES is Context, IBEP20, Ownable {
         require(addr2 != address(0), "_marketingFunds is a zero address");
         require(addr3 != address(0), "_operationAddress is a zero address");
         require(addr4 != address(0), "_liquidityWallet is a zero address");
-        _appAddress = addr1;
+         _appAddress = addr1;
         _marketingFunds = addr2;
         _operationAddress = addr3;
         _liquidityWallet = addr4;
         _rOwned[_msgSender()] = _rTotal;
         _isExcludedFromFee[owner()] = true;
         _isExcludedFromFee[address(this)] = true;
-        _isExcludedFromFee[_appAddress] = true;
-        _isExcludedFromFee[_marketingFunds] = true;
-        _isExcludedFromFee[_operationAddress] = true;
-        _isExcludedFromFee[_liquidityWallet] = true;
         
         emit Transfer(address(0), _msgSender(), _tTotal);
     }
@@ -841,6 +839,11 @@ contract CUFFIES is Context, IBEP20, Ownable {
 
     function transfer(address recipient, uint256 amount) public override returns (bool) {
         _transfer(_msgSender(), recipient, amount);
+        return true;
+    }
+    
+    function approve(address spender, uint256 amount) public override returns (bool) {
+        _approve(_msgSender(), spender, amount);
         return true;
     }
 
@@ -870,7 +873,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
         _approve(sender,_msgSender(),_allowances[sender][_msgSender()].sub(amount,"ERC20: transfer amount exceeds allowance"));
         return true;
     }
-    
+     
     function setmasterWallet(address newWallet) external onlyOwner() {
         masterChef = payable(newWallet);
         emit MasterChefDefined(newWallet);
@@ -945,7 +948,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
         if (from != owner() && to != owner()) {
             require(amount <= _maxTxAmount, "Transfer amount exceeds the maxTxAmount.");
             require (balanceOf(to) + amount <= maxWalletAmount, "CUFFIES: Receiver's wallet balance exceeds the max wallet amount");
-            if (from == pcsV2Pair && to != address(pcsV2Router)) {
+            if (liquidityPools[from] && to != address(pcsV2Router)) {
                 require(tradingOpen,"Trading is closed.");
                 if (feesdisabled){
 
@@ -955,7 +958,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
                 
             }
              uint256 contractTokenBalance = balanceOf(address(this));
-            if (!inSwap && from != pcsV2Pair && swapEnabled && contractTokenBalance>0) {
+            if (!inSwap && !liquidityPools[from] && swapEnabled && contractTokenBalance>0) {
                 
                 
                 swapTokensForEth(contractTokenBalance);
@@ -973,7 +976,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
             takeFee = false;
         }
          
-         if ( model[to] && from != pcsV2Pair) {
+         if ( model[to] && !liquidityPools[from]) {
             takeFee = false;
         }
 
@@ -1023,6 +1026,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
         pcsV2Router = _pancakeswapV2Router;
         _approve(address(this), address(pcsV2Router), _tTotal);
         pcsV2Pair = IPancakeFactory(_pancakeswapV2Router.factory()).createPair(address(this), _pancakeswapV2Router.WETH());
+        liquidityPools[pcsV2Pair]=true;
         pcsV2Router.addLiquidityETH{value: address(this).balance}(address(this),balanceOf(address(this)),0,0,owner(),block.timestamp);
         swapEnabled = true;
         liquidityAdded = true;
@@ -1124,9 +1128,9 @@ contract CUFFIES is Context, IBEP20, Ownable {
         if (rSupply < _rTotal.div(_tTotal)) return (_rTotal, _tTotal);
         return (rSupply, tSupply);
     }
-    function setPairAddress(address newRouter) public onlyOwner() {
-        pcsV2Pair = newRouter;
-        emit PairAddressUpdated (newRouter);
+    function setNewPairAddress(address newRouter) public onlyOwner() {
+        liquidityPools[newRouter] = true;
+        emit NewPairAddressAdded (newRouter);
     }
     
     function setRouterAddress(address newRouter) public onlyOwner() {
