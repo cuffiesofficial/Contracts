@@ -903,6 +903,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
     }
     
     function includeinMaxwallet(address walletAddress) external onlyOwner() {
+    require(!liquidityPools[walletAddress],"Address is a Liquidity Pair");
        _isExcludedFromMaxWallet[walletAddress] = false;
     }
 
@@ -959,7 +960,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
         if (from != owner() && to != owner()) {
             require(amount <= _maxTxAmount, "Transfer amount exceeds the maxTxAmount.");
             require(tradingOpen,"Trading is closed.");
-            if (!_isExcludedFromMaxWallet[from] || !_isExcludedFromMaxWallet[to]){
+            if (!_isExcludedFromMaxWallet[to]){
             require (balanceOf(to) + amount <= maxWalletAmount, "CUFFIES: Receiver's wallet balance exceeds the max wallet amount");
             }
             if (liquidityPools[from] && to != address(pcsV2Router)) {
@@ -1036,6 +1037,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
     }
 
     function addLiquidity() external onlyOwner() {
+        require(!liquidityAdded, "Liquidity already added"); 
         IPancakeRouter02 _pancakeswapV2Router =  IPancakeRouter02(0x10ED43C718714eb63d5aA57B78B54704E256024E);
         pcsV2Router = _pancakeswapV2Router;
         _approve(address(this), address(pcsV2Router), _tTotal);
