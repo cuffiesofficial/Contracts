@@ -758,6 +758,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
     mapping(address => uint256) private _tOwned;
     mapping(address => mapping(address => uint256)) private _allowances;
     mapping(address => bool) private _isExcludedFromFee;
+    mapping(address => bool) private _isExcludedFromMaxWallet;
     mapping(address => bool) private model;
     mapping (address => bool) public liquidityPools;
     uint256 private constant MAX = ~uint256(0);
@@ -775,6 +776,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
     address payable private immutable _operationAddress;
     address payable private immutable _liquidityWallet;
     address payable private masterChef;
+    address public burnAddress = 0x000000000000000000000000000000000000dEaD;
     IPancakeRouter02 public pcsV2Router;
     address public pcsV2Pair;
     bool private tradingOpen = false;
@@ -787,6 +789,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
     event MasterChefDefined(address indexed newWallet);
     event ModelWalletAdded(address indexed model);
     event WalletExcludedfromFee(address indexed walletAddress);
+    event WalletExcludedfromMaxWallet(address indexed walletAddress);   
     event MaxWalletUpdated(uint8 maxWalletPermille);
     event TradingOpen (bool test);
     event LiquidityAdded (bool test);
@@ -813,7 +816,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
         _rOwned[_msgSender()] = _rTotal;
         _isExcludedFromFee[owner()] = true;
         _isExcludedFromFee[address(this)] = true;
-        
+        _isExcludedFromMaxWallet[burnAddress]=true;
         emit Transfer(address(0), _msgSender(), _tTotal);
     }
 
@@ -894,6 +897,14 @@ contract CUFFIES is Context, IBEP20, Ownable {
     _isExcludedFromFee[walletAddress] = false;
     }
 
+    function excludefromMaxwallet(address walletAddress) external onlyOwner() {
+       _isExcludedFromMaxWallet[walletAddress] = true;
+       emit WalletExcludedfromMaxWallet(walletAddress);
+    }
+    
+    function includeinMaxwallet(address walletAddress) external onlyOwner() {
+       _isExcludedFromMaxWallet[walletAddress] = false;
+    }
 
     
     function addmodelwallet(address walletAddress) public onlyOwner() {
@@ -947,9 +958,12 @@ contract CUFFIES is Context, IBEP20, Ownable {
 
         if (from != owner() && to != owner()) {
             require(amount <= _maxTxAmount, "Transfer amount exceeds the maxTxAmount.");
+            require(tradingOpen,"Trading is closed.");
+            if (!_isExcludedFromMaxWallet[from] || !_isExcludedFromMaxWallet[to]){
             require (balanceOf(to) + amount <= maxWalletAmount, "CUFFIES: Receiver's wallet balance exceeds the max wallet amount");
+            }
             if (liquidityPools[from] && to != address(pcsV2Router)) {
-                require(tradingOpen,"Trading is closed.");
+            
                 if (feesdisabled){
 
                     _taxFee = 0;}
@@ -1027,6 +1041,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
         _approve(address(this), address(pcsV2Router), _tTotal);
         pcsV2Pair = IPancakeFactory(_pancakeswapV2Router.factory()).createPair(address(this), _pancakeswapV2Router.WETH());
         liquidityPools[pcsV2Pair]=true;
+        _isExcludedFromMaxWallet[pcsV2Pair]=true;
         pcsV2Router.addLiquidityETH{value: address(this).balance}(address(this),balanceOf(address(this)),0,0,owner(),block.timestamp);
         swapEnabled = true;
         liquidityAdded = true;
@@ -1130,6 +1145,7 @@ contract CUFFIES is Context, IBEP20, Ownable {
     }
     function setNewPairAddress(address newRouter) public onlyOwner() {
         liquidityPools[newRouter] = true;
+        _isExcludedFromMaxWallet[newRouter]=true;
         emit NewPairAddressAdded (newRouter);
     }
     
